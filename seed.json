@@ -1,0 +1,231 @@
+{
+  "products": [
+    {
+      "code": "MOT001",
+      "name": "GN 150 AZUL",
+      "minimum": 2
+    },
+    {
+      "code": "MOT002",
+      "name": "EK OWEN ROJA",
+      "minimum": 2
+    },
+    {
+      "code": "MOT003",
+      "name": "EK EXPRESS II",
+      "minimum": 2
+    },
+    {
+      "code": "MOT004",
+      "name": "EK EXPRESS ROJA",
+      "minimum": 2
+    },
+    {
+      "code": "MOT005",
+      "name": "EK EXPRESS AZUL",
+      "minimum": 2
+    },
+    {
+      "code": "MOT006",
+      "name": "FORZA 150",
+      "minimum": 2
+    },
+    {
+      "code": "MOT007",
+      "name": "FORZA 205",
+      "minimum": 2
+    },
+    {
+      "code": "MOT008",
+      "name": "FORZA SPEED",
+      "minimum": 2
+    },
+    {
+      "code": "MOT009",
+      "name": "GN 150 ROJA",
+      "minimum": 2
+    },
+    {
+      "code": "MOT010",
+      "name": "SUZUKI 100 AZUL",
+      "minimum": 2
+    },
+    {
+      "code": "MOT011",
+      "name": "SUZUKI 100 ROJA",
+      "minimum": 2
+    }
+  ],
+  "events": [
+    {
+      "id": "Compras0",
+      "date": "2026-11-09T12:33:32-04:00",
+      "kind": "compra",
+      "code": "MOT001",
+      "quantity": 6,
+      "origin": null,
+      "destination": "Deposito Principal",
+      "supplier": "EMPIRE"
+    },
+    {
+      "id": "Compras1",
+      "date": "2026-11-09T12:33:43-04:00",
+      "kind": "compra",
+      "code": "MOT002",
+      "quantity": 4,
+      "origin": null,
+      "destination": "Deposito Principal",
+      "supplier": "EMPIRE"
+    },
+    {
+      "id": "Compras2",
+      "date": "2026-11-09T12:33:56-04:00",
+      "kind": "compra",
+      "code": "MOT006",
+      "quantity": 10,
+      "origin": null,
+      "destination": "Deposito Principal",
+      "supplier": "FORZA"
+    },
+    {
+      "id": "Transferencias0",
+      "date": "2026-11-09T12:34:35-04:00",
+      "kind": "traslado",
+      "code": "MOT001",
+      "quantity": 3,
+      "origin": "Deposito Principal",
+      "destination": "Sucursal 1",
+      "supplier": ""
+    },
+    {
+      "id": "Transferencias1",
+      "date": "2026-11-09T12:34:46-04:00",
+      "kind": "traslado",
+      "code": "MOT001",
+      "quantity": 3,
+      "origin": "Deposito Principal",
+      "destination": "Sucursal 2",
+      "supplier": ""
+    },
+    {
+      "id": "Transferencias2",
+      "date": "2026-11-09T12:35:09-04:00",
+      "kind": "traslado",
+      "code": "MOT002",
+      "quantity": 4,
+      "origin": "Deposito Principal",
+      "destination": "Sucursal 2",
+      "supplier": ""
+    },
+    {
+      "id": "Transferencias3",
+      "date": "2026-11-09T12:35:23-04:00",
+      "kind": "traslado",
+      "code": "MOT002",
+      "quantity": 1,
+      "origin": "Sucursal 2",
+      "destination": "Sucursal 1",
+      "supplier": ""
+    },
+    {
+      "id": "Transferencias4",
+      "date": "2026-11-09T12:35:44-04:00",
+      "kind": "traslado",
+      "code": "MOT006",
+      "quantity": 6,
+      "origin": "Deposito Principal",
+      "destination": "Sucursal 1",
+      "supplier": ""
+    },
+    {
+      "id": "Ventas0",
+      "date": "2026-11-09T12:37:42-04:00",
+      "kind": "venta",
+      "code": "MOT001",
+      "quantity": 1,
+      "origin": "Sucursal 1",
+      "destination": null,
+      "supplier": ""
+    },
+    {
+      "id": "Ventas1",
+      "date": "2026-11-09T12:37:57-04:00",
+      "kind": "venta",
+      "code": "MOT002",
+      "quantity": 1,
+      "origin": "Sucursal 2",
+      "destination": null,
+      "supplier": ""
+    },
+    {
+      "id": "Ventas2",
+      "date": "2026-11-09T12:38:14-04:00",
+      "kind": "venta",
+      "code": "MOT006",
+      "quantity": 1,
+      "origin": "Sucursal 1",
+      "destination": null,
+      "supplier": ""
+    },
+    {
+      "id": "Ventas3",
+      "date": "2026-11-09T12:54:01-04:00",
+      "kind": "venta",
+      "code": "MOT001",
+      "quantity": 1,
+      "origin": "Sucursal 1",
+      "destination": null,
+      "supplier": ""
+    },
+    {
+      "id": "Ventas4",
+      "date": "2026-11-09T12:54:26-04:00",
+      "kind": "venta",
+      "code": "MOT001",
+      "quantity": 1,
+      "origin": "Sucursal 2",
+      "destination": null,
+      "supplier": ""
+    },
+    {
+      "id": "Ventas5",
+      "date": "2026-11-09T14:22:06-04:00",
+      "kind": "venta",
+      "code": "MOT002",
+      "quantity": 1,
+      "origin": "Sucursal 2",
+      "destination": null,
+      "supplier": ""
+    },
+    {
+      "id": "Ventas6",
+      "date": "2026-11-09T14:23:14-04:00",
+      "kind": "venta",
+      "code": "MOT006",
+      "quantity": 1,
+      "origin": "Sucursal 1",
+      "destination": null,
+      "supplier": ""
+    },
+    {
+      "id": "Ventas7",
+      "date": "2026-11-10T10:53:48-04:00",
+      "kind": "venta",
+      "code": "MOT006",
+      "quantity": 1,
+      "origin": "Sucursal 1",
+      "destination": null,
+      "supplier": ""
+    },
+    {
+      "id": "Ventas8",
+      "date": "2026-11-10T11:05:26-04:00",
+      "kind": "venta",
+      "code": "MOT006",
+      "quantity": 1,
+      "origin": "Sucursal 1",
+      "destination": null,
+      "supplier": ""
+    }
+  ]
+}
