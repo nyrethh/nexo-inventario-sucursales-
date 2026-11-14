@@ -11,9 +11,10 @@ const assets = {
     '/': ['index.html', 'text/html'],
     '/index.html': ['index.html', 'text/html'],
     '/app.js': ['app.js', 'text/javascript'],
+    '/serial-picker.js': ['serial-picker.js', 'text/javascript'],
     '/styles.css': ['styles.css', 'text/css']
 };
-const files = new Map(['index.html', 'app.js', 'styles.css'].map(file =>
+const files = new Map(['index.html', 'app.js', 'serial-picker.js', 'styles.css'].map(file =>
     [file, readFileSync(new URL(`./public/${file}`, import.meta.url))]
 ));
 const revision = createHash('sha256');

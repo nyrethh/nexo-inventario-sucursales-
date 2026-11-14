@@ -3,6 +3,7 @@ import {execFileSync} from 'node:child_process';
 const html=readFileSync('public/index.html','utf8');
 const javascript=readFileSync('public/app.js','utf8');
 new Function(javascript);
+new Function(readFileSync('public/serial-picker.js','utf8'));
 for(const file of ['api/index.js','lib/database.js','lib/security.js','lib/auth.js','lib/inventory.js','lib/http.js'])execFileSync(process.execPath,['--check',file]);
 for(const file of ['sql/01-esquema.sql','sql/02-datos-excel.sql','vercel.json'])if(!existsSync(file))throw new Error('Falta '+file);
 if(/chatgpt|oai-authenticated|signin-with/i.test(html+javascript))throw new Error('La interfaz conserva una dependencia de ChatGPT.');

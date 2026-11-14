@@ -7,17 +7,25 @@ import {handle} from '../lib/http.js';
 import {hashPassword,verifyPassword,hashToken} from '../lib/security.js';
 const schema=readFileSync(new URL('../sql/01-esquema.sql',import.meta.url),'utf8');
 const seed=readFileSync(new URL('../sql/02-datos-excel.sql',import.meta.url),'utf8');
+const serialMigration=readFileSync(new URL('../sql/05-seriales-y-sucursales.sql',import.meta.url),'utf8');
 const appUrl='https://nexo.example.com';
 test('PostgreSQL: autenticación, roles, datos Excel y operaciones de inventario',async()=>{
  const pg=new PGlite();
  try{
-  await pg.exec(schema);await pg.exec(seed);
+  await pg.exec(schema);await pg.exec(seed);await pg.exec(serialMigration);
+  await pg.query("UPDATE motorcycle_units SET serial='LEGACY-'||id");
   const db=createDatabase(pg,fn=>pg.transaction(fn));
   const password='Clave-privada-2026';const hash=await hashPassword(password);
   assert.notEqual(hash,password);assert.equal(await verifyPassword(password,hash),true);assert.equal(await verifyPassword('incorrecta',hash),false);
   await pg.query("INSERT INTO users(email,name,role,password_hash) VALUES('admin@example.com','Admin','admin',$1)",[hash]);
   let cookie='';
   async function call(route,data,options={}){
+   if(route==='event' && data && !data.serials){
+    const serials=data.kind==='compra'
+      ? Array.from({length:data.quantity},()=>crypto.randomUUID())
+      : (await pg.query('SELECT serial FROM motorcycle_units WHERE code=$1 AND location=$2 AND NOT sold AND serial IS NOT NULL ORDER BY id LIMIT $3',[data.code,data.origin,data.quantity])).rows.map(r=>r.serial);
+    data={...data,serials};
+   }
    const headers={'Cookie':options.cookie??cookie,'Origin':options.origin??appUrl,'Content-Type':'application/json',...options.headers};
    const response=await handle(new Request(appUrl+'/api/'+route,{method:data?'POST':'GET',headers,body:data?JSON.stringify(data):undefined}),{db,appUrl});
    return {status:response.status,data:await response.json(),cookie:response.headers.get('set-cookie')};
@@ -94,7 +102,7 @@ test('PostgreSQL: autenticación, roles, datos Excel y operaciones de inventario
  }finally{await pg.close()}
 });
 test('Importación por API equivale al SQL del Excel y se puede ejecutar una sola vez',async()=>{
- const pg=new PGlite();try{await pg.exec(schema);const db=createDatabase(pg,fn=>pg.transaction(fn));await pg.query("INSERT INTO users(email,name,role,password_hash) VALUES('a@example.com','Admin','admin',$1)",[await hashPassword('Contraseña-segura-2026')]);
+ const pg=new PGlite();try{await pg.exec(schema);await pg.exec(serialMigration);const db=createDatabase(pg,fn=>pg.transaction(fn));await pg.query("INSERT INTO users(email,name,role,password_hash) VALUES('a@example.com','Admin','admin',$1)",[await hashPassword('Contraseña-segura-2026')]);
  const make=(route,body,cookie='')=>new Request(appUrl+'/api/'+route,{method:body?'POST':'GET',headers:{Origin:appUrl,'Content-Type':'application/json',Cookie:cookie},body:body?JSON.stringify(body):undefined});
  const login=await handle(make('login',{email:'a@example.com',password:'Contraseña-segura-2026'}),{db,appUrl});const cookie=login.headers.get('set-cookie').split(';')[0];
  assert.equal((await handle(make('import',{},cookie),{db,appUrl})).status,200);

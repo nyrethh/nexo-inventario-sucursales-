@@ -1288,3 +1288,25 @@ dialog {
         min-height: 44px;
     }
 }
+.serial-fields { min-width:0; border:1px solid var(--line); border-radius:8px; margin:12px 0 0; padding:12px; }
+.serial-fields legend { padding-inline:5px; font-weight:600; }
+.serial-cell { max-width:240px; white-space:normal; overflow-wrap:anywhere; }
+.serial-picker { min-width:0; }
+.serial-picker > input { width:100%; margin-top:7px; }
+.serial-results {
+    border:1px solid var(--line); border-radius:8px; margin-top:6px;
+    max-height:220px; overflow-y:auto; overscroll-behavior:contain; background:white;
+}
+.serial-results[hidden] { display:none; }
+.serial-result {
+    display:flex; flex-direction:column; align-items:flex-start; gap:3px;
+    width:100%; min-height:54px; padding:10px 12px; background:white; color:var(--ink);
+    border:0; border-bottom:1px solid var(--line); text-align:left; overflow-wrap:anywhere;
+}
+.serial-result span { color:var(--muted); font-size:12px; }
+.serial-result:hover, .serial-result[aria-selected=true] { background:#edf4e5; }
+.serial-feedback { margin-top:8px; }
+.serial-selected { list-style:none; padding:0; margin:10px 0 0; display:grid; gap:6px; }
+.serial-selected li { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:4px 10px; background:#edf4e5; border-radius:8px; }
+.serial-selected li > span { min-width:0; overflow-wrap:anywhere; font-weight:600; }
+.serial-remove { flex:none; border:0; background:transparent; color:var(--green); padding:8px; min-height:44px; }

@@ -4,8 +4,15 @@ const movementActions = [
     ['compra', 'Registrar entradas'],
     ['traslado', 'Registrar traslados']
 ];
-const mayRegister = kind => admin() || S?.user.permissions?.includes(kind);
+const mayRegister = kind => S?.serialTracking && (admin() || (kind !== 'traslado' && S.user.permissions?.includes(kind)));
 let catalogStatus = 'active';
+let serialPicker = null;
+let serialPickerContext = '';
+function clearSerialPicker() {
+    serialPicker?.destroy();
+    serialPicker = null;
+    serialPickerContext = '';
+}
 
 async function api(path, data) { const r = await fetch('/api/' + path, { method: data ? 'POST' : 'GET', headers: data ? { 'Content-Type': 'application/json' } : {}, body: data ? JSON.stringify(data) : undefined }); const j = await r.json(); if (!r.ok) throw Object.assign(new Error(j.error || 'No se pudo conectar.'), { status: r.status }); return j }
 async function load() {
@@ -71,7 +78,7 @@ function render() {
     if (!S) return;
     const title = navs.find(item => item[0] === page)?.[2] || '';
     const initial = esc(S.user.name.slice(0, 1).toUpperCase());
-    const sections = navs.filter(item => admin() || item[0] !== 'users');
+    const sections = navs.filter(item => admin() || !['users','transfers'].includes(item[0]));
     $('#app').innerHTML = `
         <div class="mobile-shade" aria-hidden="true" onclick="setMenu(false, true)"></div>
         <aside id="app-sidebar" aria-label="Navegación de Nexo">
@@ -106,7 +113,7 @@ function heading(title, subtitle, action = '') { return `<div class="heading"><d
 function btn(label, action, secondary = false) { return `<button class="button ${secondary ? 'secondary' : ''}" onclick="${action}">${label}</button>` }
 function locationSelect(id = 'filter', all = true) { return `<select aria-label="Ubicación" id="${id}" onchange="filter=this.value;content()">${all ? '<option value="">Todas las ubicaciones</option>' : ''}${S.locations.filter(l => admin() || l.id === S.user.location).map(l => `<option value="${esc(l.id)}" ${filter === l.id ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select>` }
 function toolbar(dates = false) { return `<div class="toolbar"><input class="search" aria-label="Buscar producto" placeholder="⌕  Buscar por nombre o código…" value="${esc(query)}" oninput="query=this.value;updateRows()">${locationSelect()}${dates ? `<label>Desde<input type="date" value="${from}" onchange="from=this.value;content()"></label><label>Hasta<input type="date" value="${to}" onchange="to=this.value;content()"></label>` : ''}<button class="button secondary" onclick="exportCSV()">↓ Exportar CSV</button></div>` }
-function eventTable(events, compact = false) { return `<div class="table-wrap"><table><thead><tr><th>Producto</th><th>Movimiento</th>${compact ? '' : '<th>Origen → destino</th><th>Proveedor</th>'}<th>Cantidad</th><th>Fecha</th></tr></thead><tbody>${events.map(e => `<tr><td><strong>${esc((e.product_name || P(e.code)))}</strong><small>${esc(e.code)}</small></td><td><span class="badge ${e.kind === 'venta' ? 'warn' : ''}">${typeNames[e.kind]}</span></td>${compact ? '' : `<td>${esc(L(e.origin))} → ${esc(L(e.destination))}</td><td>${esc(e.supplier || '—')}</td>`}<td><strong>${num(e.quantity)}</strong> <small>unidades</small></td><td>${date(e.date)}</td></tr>`).join('') || `<tr><td colspan="6" class="empty">No hay movimientos para este filtro.</td></tr>`}</tbody></table></div>` }
+function eventTable(events, compact = false) { return `<div class="table-wrap"><table><thead><tr><th>Producto</th><th>Movimiento</th>${compact ? '' : '<th>Origen → destino</th><th>Proveedor</th>'}<th>Cantidad</th><th>Seriales</th><th>Fecha</th></tr></thead><tbody>${events.map(e => `<tr><td><strong>${esc((e.product_name || P(e.code)))}</strong><small>${esc(e.code)}</small></td><td><span class="badge ${e.kind === 'venta' ? 'warn' : ''}">${typeNames[e.kind]}</span></td>${compact ? '' : `<td>${esc(L(e.origin))} → ${esc(L(e.destination))}</td><td>${esc(e.supplier || '—')}</td>`}<td><strong>${num(e.quantity)}</strong> <small>unidades</small></td><td class="serial-cell">${esc(e.serials?.join(", ") || "Histórico sin serial")}</td><td>${date(e.date)}</td></tr>`).join('') || `<tr><td colspan="7" class="empty">No hay movimientos para este filtro.</td></tr>`}</tbody></table></div>` }
 function labelTableCells(scope) {
     for (const table of scope.querySelectorAll('table:not([data-mobile-ready])')) {
         const headings = Array.from(table.tHead?.rows[0]?.cells || [], cell => cell.textContent.trim());
@@ -121,9 +128,15 @@ function labelTableCells(scope) {
 }
 function content() {
     renderContent();
+    if (!S.serialTracking) {
+        $('#content').insertAdjacentHTML('afterbegin', '<div class="notice"><p>' +
+            (admin() ? 'Para activar los seriales, ejecuta sql/05-seriales-y-sucursales.sql en la base de Nexo. Las consultas siguen disponibles.'
+                : 'El registro de motos está pendiente de configuración por el administrador.') + '</p></div>');
+    }
     labelTableCells($('#content'));
 }
 function renderContent() {
+
     const c = $('#content'); if (page === 'dashboard') { const total = stock(), sales = S.events.filter(e => e.kind === 'venta').reduce((a, e) => a + e.quantity, 0), low = S.products.filter(p => p.active && stock(p.code) <= p.minimum).length, locs = S.locations.filter(l => admin() || l.id === S.user.location), max = Math.max(1, ...locs.map(l => stock(null, l.id))), sold = locs.map(l => S.events.filter(e => e.kind === 'venta' && e.origin === l.id).reduce((a, e) => a + e.quantity, 0)), sum = sold.reduce((a, b) => a + b, 0); let start = 0; const colors = ['#205c46', '#86a987', '#c4d9a5']; const gradient = sold.map((v, i) => { let s = start; start += sum ? v / sum * 100 : 0; return colors[i] + ' ' + s + '% ' + start + '%' }).join(','); c.innerHTML = heading('Vista general', 'Todo tu inventario. Una sola mirada.', dashboardMovementAction()) + (!S.imported && admin() ? `<div class="notice"><div><strong>Tu Excel está listo para importar</strong><p>11 productos · 3 compras · 5 traslados · 9 ventas. Se importará una sola vez.</p></div>${btn('Importar datos del Excel', "importData(this)")}</div>` : '') + `<div class="stats">${[['Existencias totales', total, 'Unidades disponibles', '▦'], ['Unidades vendidas', sales, 'Acumulado de movimientos', '↗'], ['Productos registrados', S.products.filter(p => p.active).length, 'Catálogo de productos', '◇'], ['Stock bajo o agotado', low, 'Productos bajo el mínimo global', '!']].map((x, i) => `<div class="stat ${i === 0 ? 'featured' : ''}"><div class="stat-top">${x[0]}<span class="stat-icon">${x[3]}</span></div><div class="stat-number">${num(x[1])}</div><div class="stat-note">${x[2]}</div></div>`).join('')}</div><div class="grid"><section class="panel"><div class="panel-head"><div><h2>Existencias por ubicación</h2><div class="caption">Distribución actual del inventario</div></div><span class="badge">Unidades</span></div><div class="bars">${locs.map(l => `<div class="bar-group"><strong>${stock(null, l.id)}</strong><div class="bar" style="height:${stock(null, l.id) / max * 145}px"></div></div>`).join('')}</div><div class="bar-labels">${locs.map(l => `<span>${esc(l.name)}</span>`).join('')}</div></section><section class="panel"><div class="panel-head"><div><h2>Ventas por ubicación</h2><div class="caption">Unidades vendidas · acumulado</div></div></div><div class="donut-wrap"><div class="donut" role="img" aria-label="${locs.map((l, i) => l.name + ': ' + sold[i]).join(', ')}" style="background:${sum ? 'conic-gradient(' + gradient + ')' : '#edf1e7'}"><div class="donut-hole"><strong>${num(sum)}</strong><span>unidades vendidas</span></div></div><div class="legend">${locs.map((l, i) => `<div class="legend-row"><i class="dot" style="background:${colors[i]}"></i>${esc(l.name)}<strong>${sold[i]}</strong></div>`).join('')}</div></div></section></div><section class="panel" style="margin-top:24px"><div class="panel-head"><div><h2>Últimos movimientos</h2><div class="caption">El pulso de tu negocio</div></div><button class="inline-link" onclick="go('reports')">Ver historial →</button></div>${eventTable(S.events.slice(0, 5), true)}</section>`; return }
     if (['sales', 'purchases', 'transfers'].includes(page)) { const kind = { sales: 'venta', purchases: 'compra', transfers: 'traslado' }[page]; c.innerHTML = heading({ sales: 'Ventas', purchases: 'Entradas y compras', transfers: 'Traslados entre ubicaciones' }[page], { sales: 'Cada venta actualiza las existencias de su ubicación.', purchases: 'Registra mercancía recibida y su proveedor.', transfers: 'Mueve inventario con origen, destino y cantidad.' }[page], mayRegister(kind) ? btn('+ ' + { sales: 'Registrar venta', purchases: 'Registrar entrada', transfers: 'Nuevo traslado' }[page], `openForm('${kind}')`) : '') + `<section class="panel">${toolbar(true)}<div id="rows"></div></section>`; updateRows(); return }
     if (page === 'inventory') { c.innerHTML = heading('Inventario', 'Existencias disponibles por producto y ubicación.', mayRegister('compra') ? btn('+ Añadir inventario', "openForm('compra')") : '') + `<section class="panel">${toolbar()}<div id="rows"></div></section>`; updateRows(); return }
@@ -186,7 +199,40 @@ function statusButton(kind, key, active) {
     const label = kind === 'product' ? (active ? 'Ocultar' : 'Mostrar') : (active ? 'Desactivar' : 'Reactivar');
     return `<button class="inline-link" data-key="${esc(key)}" data-active="${active ? 0 : 1}" onclick="changeStatus('${kind}',this)">${label}</button>`;
 }
-function inventoryTable() { const locs = S.locations.filter(l => (admin() || l.id === S.user.location) && (!filter || filter === l.id)); return `<div class="table-wrap"><table><thead><tr><th>Producto</th>${locs.map(l => '<th>' + esc(l.name) + '</th>').join('')}<th>Total</th><th>Estado</th></tr></thead><tbody>${relevantProducts().map(p => { const total = locs.reduce((a, l) => a + stock(p.code, l.id), 0); return `<tr><td><div class="cell-product"><span class="product-mark">◇</span><div><strong>${esc(p.name)}</strong><small>${esc(p.code)}</small></div></div></td>${locs.map(l => `<td>${stock(p.code, l.id)}</td>`).join('')}<td><strong>${total}</strong></td><td><span class="badge ${total === 0 ? 'red' : total <= p.minimum ? 'warn' : ''}">${total === 0 ? 'Agotado' : total <= p.minimum ? 'Stock bajo' : 'Disponible'}</span></td></tr>` }).join('') || '<tr><td class="empty">No se encontraron productos.</td></tr>'}</tbody></table></div>` }
+function inventorySummary() { const locs = S.locations.filter(l => (admin() || l.id === S.user.location) && (!filter || filter === l.id)); return `<div class="table-wrap"><table><thead><tr><th>Producto</th>${locs.map(l => '<th>' + esc(l.name) + '</th>').join('')}<th>Total</th><th>Estado</th></tr></thead><tbody>${relevantProducts().map(p => { const total = locs.reduce((a, l) => a + stock(p.code, l.id), 0); return `<tr><td><div class="cell-product"><span class="product-mark">◇</span><div><strong>${esc(p.name)}</strong><small>${esc(p.code)}</small></div></div></td>${locs.map(l => `<td>${stock(p.code, l.id)}</td>`).join('')}<td><strong>${total}</strong></td><td><span class="badge ${total === 0 ? 'red' : total <= p.minimum ? 'warn' : ''}">${total === 0 ? 'Agotado' : total <= p.minimum ? 'Stock bajo' : 'Disponible'}</span></td></tr>` }).join('') || '<tr><td class="empty">No se encontraron productos.</td></tr>'}</tbody></table></div>` }
+function inventoryTable() {
+    const units = S.units.filter(unit => (!filter || unit.location === filter)
+        && (unit.code + ' ' + P(unit.code) + ' ' + (unit.serial || '')).toLowerCase().includes(query.toLowerCase()));
+    const pendingGroups = new Set();
+    const rows = units.map(unit => {
+        const group = JSON.stringify([unit.code,unit.location]);
+        const identify = !unit.serial && !pendingGroups.has(group) && mayRegister('compra');
+        if (identify) pendingGroups.add(group);
+        return `<tr><td><strong>${esc(P(unit.code))}</strong><small>${esc(unit.code)}</small></td>
+            <td>${esc(unit.serial || 'Pendiente de identificar')}</td><td>${esc(L(unit.location))}</td>
+            <td>${identify ? `<button type="button" class="inline-link" data-code="${esc(unit.code)}" data-location="${esc(unit.location)}" onclick="openIdentify(this.dataset.code,this.dataset.location)">Completar seriales</button>` : ''}</td></tr>`;
+    }).join('');
+    return inventorySummary() + `<h2 style="margin:24px 0 16px">Motos por serial</h2>
+        <div class="table-wrap"><table><thead><tr><th>Producto</th><th>Serial</th><th>Ubicación</th><th>Acción</th></tr></thead>
+        <tbody>${rows || '<tr><td class="empty">No hay unidades disponibles.</td></tr>'}</tbody></table></div>`;
+}
+function openIdentify(code, location) {
+    clearSerialPicker();
+    const count = S.units.filter(unit => unit.code === code && unit.location === location && !unit.serial).length;
+    const modal = $('#modal');
+    formId = crypto.randomUUID();
+    modal.innerHTML = `<button class="close" aria-label="Cerrar" onclick="$('#modal').close()">×</button>
+        <h2>Completar seriales</h2><p>${esc(P(code))} · ${esc(L(location))}. Hay ${count} unidades antiguas por identificar. Esto conserva las existencias actuales.</p>
+        <form id="entryform"><input name="code" type="hidden" value="${esc(code)}">
+            <input name="location" type="hidden" value="${esc(location)}"><input name="kind" type="hidden" value="compra">
+            <label>Cantidad a identificar<input name="quantity" type="number" min="1" max="${Math.min(count,100)}" value="1" required oninput="updateSerialFields()"></label>
+            <div id="serial-editor"></div><div class="error" id="formerror" role="alert"></div>
+            <div class="form-footer"><button class="button secondary" type="button" onclick="$('#modal').close()">Cancelar</button><button class="button" type="submit">Guardar seriales</button></div>
+        </form>`;
+    $('#entryform').onsubmit = event => submit(event,'serials');
+    updateSerialFields();
+    modal.showModal();
+}
 function updateRows() {
     renderRows();
     const rows = $('#rows');
@@ -195,6 +241,7 @@ function updateRows() {
 function renderRows() { const r = $('#rows'); if (!r) return; if (page === 'inventory') r.innerHTML = inventoryTable(); else if (page === 'products') r.innerHTML = productsTable(); else if (page === 'reports') { const ev = visibleEvents(), sold = ev.filter(e => e.kind === 'venta').reduce((a, e) => a + e.quantity, 0); r.innerHTML = `<div class="notice"><p><strong>${sold}</strong> unidades vendidas en el período · <strong>${ev.length}</strong> movimientos · <strong>${stock(null, filter)}</strong> unidades disponibles actualmente</p></div><h2 style="margin-bottom:16px">Resumen de ventas por producto</h2><div class="table-wrap"><table><thead><tr><th>Producto</th><th>Unidades vendidas</th></tr></thead><tbody>${relevantProducts().map(p => ({ p, q: ev.filter(e => e.kind === 'venta' && e.code === p.code).reduce((a, e) => a + e.quantity, 0) })).filter(x => x.q).map(x => `<tr><td>${esc(x.p.name)}</td><td>${x.q}</td></tr>`).join('') || '<tr><td class="empty">Sin ventas en el período.</td></tr>'}</tbody></table></div><h2 style="margin:24px 0 16px">Resumen de existencias actuales</h2>${inventoryTable()}<h2 style="margin:24px 0 16px">Historial de movimientos</h2>${eventTable(ev)}`; } else r.innerHTML = eventTable(visibleEvents({ sales: 'venta', purchases: 'compra', transfers: 'traslado' }[page])) }
 function options(locs, value) { return locs.map(l => `<option value="${esc(l.id)}" ${value === l.id ? 'selected' : ''}>${esc(l.name)}</option>`).join('') }
 function openForm(kind, key) {
+    clearSerialPicker();
     formId = crypto.randomUUID();
     const modal = $('#modal');
     let fields = '', title = '', sub = '';
@@ -210,7 +257,31 @@ function openForm(kind, key) {
         const user = S.users.find(item => item.email === key);
         title = user ? 'Editar usuario' : 'Crear usuario';
         sub = user ? 'Deja la contraseña vacía para conservar la actual.' : 'Elige el rol, la ubicación y los permisos de la cuenta.';
-        fields = userFields(user); } else { title = { venta: 'Registrar venta', compra: 'Registrar entrada', traslado: 'Nuevo traslado' }[kind]; sub = { venta: 'Se descontará la cantidad del inventario disponible.', compra: 'La mercancía se sumará a la ubicación seleccionada.', traslado: 'La salida y la entrada se registran juntas.' }[kind]; const own = S.locations.filter(l => admin() || l.id === S.user.location); fields = `<input type="hidden" name="kind" value="${kind}"><label class="full">Producto<select name="code" required onchange="showAvailable()"><option value="">Selecciona un producto</option>${S.products.filter(p => p.active).map(p => `<option value="${esc(p.code)}">${esc(p.code + ' · ' + p.name)}</option>`).join('')}</select></label>${kind !== 'compra' ? `<label>Origen<select name="origin" onchange="showAvailable()">${options(own)}</select></label>` : ''}${kind !== 'venta' ? `<label>Destino<select name="destination">${options(kind === 'compra' ? own : S.locations, kind === 'traslado' ? 'Sucursal 1' : undefined)}</select></label>` : ''}<label>Cantidad<input name="quantity" type="number" min="1" max="1000000" step="1" required placeholder="0"></label>${kind === 'compra' ? '<label>Proveedor<input name="supplier" required maxlength="160" placeholder="Nombre del proveedor"></label>' : ''}<div class="full caption" id="available"></div><label class="full">Observaciones <span style="color:#8e9986">(opcional)</span><textarea name="note" rows="2" maxlength="400" placeholder="Referencia o detalle del movimiento"></textarea></label>` } modal.innerHTML = `<button class="close" aria-label="Cerrar" onclick="$('#modal').close()">×</button><h2>${title}</h2><p>${sub}</p><form id="entryform"><div class="form-grid">${fields}</div><div class="error" role="alert" id="formerror"></div><div class="form-footer"><button type="button" class="button secondary" onclick="$('#modal').close()">Cancelar</button><button class="button" type="submit">Guardar ${kind === 'product' ? 'producto' : kind === 'user' ? 'usuario' : 'movimiento'}</button></div></form>`; $('#entryform').onsubmit = e => submit(e, kind); if (kind === 'user') updateRoleFields(); modal.showModal(); showAvailable() }
+        fields = userFields(user); } else {
+        title = { venta: 'Registrar venta', compra: 'Registrar entrada', traslado: 'Nuevo traslado' }[kind];
+        sub = kind === 'compra' ? 'Registra el serial individual de cada moto recibida.'
+            : 'Busca y añade las motos disponibles. La cantidad se calcula con tu selección.';
+        fields = movementFields(kind);
+    } modal.innerHTML = `<button class="close" aria-label="Cerrar" onclick="$('#modal').close()">×</button><h2>${title}</h2><p>${sub}</p><form id="entryform"><div class="form-grid">${fields}</div><div class="error" role="alert" id="formerror"></div><div class="form-footer"><button type="button" class="button secondary" onclick="$('#modal').close()">Cancelar</button><button class="button" type="submit">Guardar ${kind === 'product' ? 'producto' : kind === 'user' ? 'usuario' : 'movimiento'}</button></div></form>`; $('#entryform').onsubmit = e => submit(e, kind); if (kind === 'user') updateRoleFields(); modal.showModal(); showAvailable() }
+function movementFields(kind) {
+    const entering = kind === 'compra';
+    const own = S.locations.filter(location => admin() || location.id === S.user.location);
+    return `
+        <input type="hidden" name="kind" value="${kind}">
+        <label class="full">Producto<select name="code" required onchange="showAvailable()">
+            <option value="">Selecciona un producto</option>
+            ${S.products.filter(product => product.active).map(product => `<option value="${esc(product.code)}">${esc(product.code + ' · ' + product.name)}</option>`).join('')}
+        </select></label>
+        ${entering ? '' : `<label>Origen<select name="origin" onchange="showAvailable()">${options(own)}</select></label>`}
+        ${kind === 'venta' ? '' : `<label>Destino<select name="destination">${options(entering ? own : S.locations, kind === 'traslado' ? 'Sucursal 1' : undefined)}</select></label>`}
+        <label>${entering ? 'Cantidad' : 'Cantidad seleccionada'}
+            <input name="quantity" type="number" min="1" max="100" step="1" value="${entering ? 1 : 0}"
+                ${entering ? 'required oninput="updateSerialFields()"' : 'readonly'}>
+        </label>
+        ${entering ? '<label>Proveedor<input name="supplier" required maxlength="160" placeholder="Nombre del proveedor"></label>' : ''}
+        <div class="full caption" id="available"></div><div class="full" id="serial-editor"></div>
+        <label class="full">Observaciones (opcional)<textarea name="note" rows="2" maxlength="400"></textarea></label>`;
+}
 function userFields(user) {
     const self = user?.email === S.user.email;
     const role = user?.role ?? 'operador';
@@ -227,7 +298,7 @@ function userFields(user) {
         <label id="operator-location" class="full">Ubicación<select name="location">${options(S.locations,user?.location)}</select></label>
         <fieldset id="operator-actions" class="full permission-options">
             <legend>Acciones permitidas</legend>
-            ${movementActions.map(([value, label]) => `<label><input type="checkbox" name="permissions" value="${value}" ${user?.permissions.includes(value) ? 'checked' : ''}>${label}</label>`).join('')}
+            ${movementActions.filter(([value]) => value !== 'traslado').map(([value, label]) => `<label><input type="checkbox" name="permissions" value="${value}" ${user?.permissions.includes(value) ? 'checked' : ''}>${label}</label>`).join('')}
             <p>Sin acciones seleccionadas, la cuenta puede consultar su ubicación.</p>
         </fieldset>
         <p id="admin-actions" class="full caption">El administrador tiene acceso a todas las ubicaciones y puede gestionar usuarios y productos.</p>`;
@@ -240,8 +311,82 @@ function updateRoleFields() {
     $('#operator-actions').disabled = isAdmin;
     $('#admin-actions').hidden = !isAdmin;
 }
-function showAvailable() { const f = $('#entryform'), el = $('#available'); if (!el || !f.elements.code.value) return; const loc = f.elements.origin?.value; el.textContent = loc ? 'Disponible en origen: ' + stock(f.elements.code.value, loc) + ' unidades.' : '' }
-async function submit(e, kind) { e.preventDefault(); const f = e.target, button = f.querySelector('[type=submit]'), error = $('#formerror'); button.disabled = true; error.style.display = 'none'; try { const data = new FormData(f); const body = Object.fromEntries(data); if (kind === 'user') body.permissions = data.getAll('permissions'); body.id = formId; await api(['product', 'user'].includes(kind) ? kind : 'event', body); $('#modal').close(); await load(); toast('Registro guardado correctamente.') } catch (err) { error.textContent = err.message; error.style.display = 'block' } finally { button.disabled = false } }
+function showAvailable() {
+    const form = $('#entryform');
+    const label = $('#available');
+    if (!label) return;
+    const code = form.elements.code.value;
+    const location = form.elements.origin?.value;
+    const pending = S.units.filter(unit => unit.code === code && unit.location === location && !unit.serial).length;
+    label.textContent = code && location
+        ? 'Disponibles: ' + stock(code, location) + '. Pendientes de identificar: ' + pending + '.'
+        : '';
+    updateSerialFields();
+}
+function updateSerialFields() {
+    const form = $('#entryform');
+    const editor = $('#serial-editor');
+    if (!editor) return;
+    const code = form.elements.code.value;
+    if (form.elements.kind.value !== 'compra') {
+        const location = form.elements.origin.value;
+        const context = JSON.stringify([code, location]);
+        if (serialPicker && context === serialPickerContext) return;
+        clearSerialPicker();
+        form.elements.quantity.value = '0';
+        if (!code) {
+            editor.innerHTML = '<p class="caption">Selecciona el producto para buscar sus motos por serial.</p>';
+            return;
+        }
+        serialPickerContext = context;
+        serialPicker = NexoSerialPicker.mount(editor, {
+            units: S.units.filter(unit => unit.code === code && unit.location === location && unit.serial && !unit.sold),
+            productName: P,
+            onChange(serials) { form.elements.quantity.value = String(serials.length); }
+        });
+        return;
+    }
+    const previous = Array.from(editor.querySelectorAll('[name=serials]'), field => field.value);
+    const quantity = Number(form.elements.quantity.value);
+    if (!code || !Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+        editor.innerHTML = '<p class="caption">Selecciona el producto y una cantidad de 1 a 100 motos.</p>';
+        return;
+    }
+    editor.innerHTML = `<fieldset class="serial-fields"><legend>Serial de cada moto</legend>
+        <div class="form-grid">${Array.from({length:quantity}, (_, index) => `<label>Moto ${index + 1}
+            <input name="serials" required maxlength="80" value="${esc(previous[index])}" autocomplete="off" placeholder="Serial único">
+        </label>`).join('')}</div></fieldset>`;
+}
+
+async function submit(event, kind) {
+    event.preventDefault();
+    const form = event.target;
+    const button = form.querySelector('[type=submit]');
+    const error = $('#formerror');
+    button.disabled = true;
+    error.style.display = 'none';
+    try {
+        const data = new FormData(form);
+        const body = Object.fromEntries(data);
+        if (kind === 'user') body.permissions = data.getAll('permissions');
+        if (['compra', 'venta', 'traslado', 'serials'].includes(kind)) body.serials = data.getAll('serials');
+        if (kind === 'venta' || kind === 'traslado') {
+            if (!serialPicker?.serials.length) throw new Error('Busca y selecciona al menos una moto por su serial.');
+            body.quantity = body.serials.length;
+        }
+        body.id = formId;
+        await api(['product', 'user', 'serials'].includes(kind) ? kind : 'event', body);
+        $('#modal').close();
+        await load();
+        toast('Registro guardado correctamente.');
+    } catch (failure) {
+        error.textContent = failure.message;
+        error.style.display = 'block';
+    } finally {
+        button.disabled = false;
+    }
+}
+
 async function importData(b) { b.disabled = true; try { await api('import', {}); await load(); toast('Excel importado. Existencias: 11 unidades.') } catch (e) { toast(e.message); b.disabled = false } }
 async function changeStatus(kind, button) {
     button.disabled = true;
@@ -255,5 +400,6 @@ async function changeStatus(kind, button) {
         button.disabled = false;
     }
 }
-function exportCSV() { let rows; if (['inventory', 'products'].includes(page)) { const locs = S.locations.filter(l => (admin() || l.id === S.user.location) && (!filter || l.id === filter)); rows = [['Código', 'Producto', ...locs.map(l => l.name), 'Total'], ...relevantProducts().map(p => [p.code, p.name, ...locs.map(l => stock(p.code, l.id)), locs.reduce((a, l) => a + stock(p.code, l.id), 0)])] } else { rows = [['Fecha', 'Tipo', 'Código', 'Producto', 'Cantidad', 'Origen', 'Destino', 'Proveedor', 'Observaciones', 'Usuario'], ...visibleEvents({ sales: 'venta', purchases: 'compra', transfers: 'traslado' }[page]).map(e => [e.date, typeNames[e.kind], e.code, (e.product_name || P(e.code)), e.quantity, L(e.origin), L(e.destination), e.supplier, e.note, e.actor])] } const csv = '\uFEFF' + rows.map(row => row.map(v => '"' + String(v ?? '').replace(/^[=+@-]/, "'$&").replace(/"/g, '""') + '"').join(';')).join('\r\n'); const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); const a = document.createElement('a'); a.href = url; a.download = 'nexo-' + page + '-' + new Date().toISOString().slice(0, 10) + '.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) }
+function exportCSV() { let rows; if (['inventory', 'products'].includes(page)) { const locs = S.locations.filter(l => (admin() || l.id === S.user.location) && (!filter || l.id === filter)); rows = [['Código', 'Producto', ...locs.map(l => l.name), 'Total'], ...relevantProducts().map(p => [p.code, p.name, ...locs.map(l => stock(p.code, l.id)), locs.reduce((a, l) => a + stock(p.code, l.id), 0)])] } else { rows = [['Fecha', 'Tipo', 'Código', 'Producto', 'Cantidad', 'Seriales', 'Origen', 'Destino', 'Proveedor', 'Observaciones', 'Usuario'], ...visibleEvents({ sales: 'venta', purchases: 'compra', transfers: 'traslado' }[page]).map(e => [e.date, typeNames[e.kind], e.code, (e.product_name || P(e.code)), e.quantity, e.serials?.join(', ') || '', L(e.origin), L(e.destination), e.supplier, e.note, e.actor])] } const csv = '\uFEFF' + rows.map(row => row.map(v => '"' + String(v ?? '').replace(/^[=+@-]/, "'$&").replace(/"/g, '""') + '"').join(';')).join('\r\n'); const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); const a = document.createElement('a'); a.href = url; a.download = 'nexo-' + page + '-' + new Date().toISOString().slice(0, 10) + '.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) }
+$('#modal').addEventListener('close', clearSerialPicker);
 load();

@@ -12,6 +12,7 @@ Sistema web para **Depósito Principal, Sucursal 1 y Sucursal 2**, con administr
 - Base PostgreSQL con actualización atómica del stock, bloqueo de registros durante los movimientos y protección contra cantidades negativas.
 - Contraseñas protegidas con scrypt; sesiones aleatorias guardadas como hashes, cookies HttpOnly y Secure en producción, vencimiento de siete días y límite de intentos de inicio de sesión.
 - SQL con los datos extraídos del Excel original: **11 productos, 3 compras, 5 traslados y 9 ventas**.
+- Control individual de motos por serial y acceso aislado por ubicación. Consulta `sql/LEEME-SERIALES.md` para actualizar una base existente antes del despliegue.
 
 El Excel original no tiene precios. Los resúmenes muestran cantidades, no ingresos monetarios. El mínimo de stock inicial es de 2 unidades por producto y es una referencia global. Los movimientos guardados son inmutables; esta entrega no incluye anulaciones, devoluciones ni ajustes de inventario. El historial registra el correo que realizó la operación.
 

@@ -17,5 +17,9 @@ try {
         if (!(await client.query("SELECT 1 FROM imports WHERE id='excel-v1'")).rowCount) { await client.query(readFileSync(new URL('../sql/02-datos-excel.sql', import.meta.url), 'utf8')); console.log('Excel importado: 11 productos, 17 movimientos.'); }
         else console.log('El Excel ya fue importado; no se duplicaron datos.');
     }
+    if (!(await client.query("SELECT 1 FROM schema_migrations WHERE version='003'")).rowCount) {
+        await client.query(readFileSync(new URL('../sql/05-seriales-y-sucursales.sql', import.meta.url),'utf8'));
+        console.log('Control individual por serial activado.');
+    }
     console.log('Base de datos preparada.');
 } catch (e) { console.error('No se pudo preparar la base:', e.code || e.message); process.exitCode = 1 } finally { await client.end() }
