@@ -31,6 +31,15 @@ test('Seriales, aislamiento de sucursal y conservación del inventario anterior'
         assert.deepEqual((await pg.query('SELECT * FROM stock ORDER BY code,location')).rows, originalStock);
         assert.equal((await pg.query('SELECT count(*)::int AS n FROM motorcycle_units')).rows[0].n, 11);
         assert.equal((await call('state', null, admin)).data.serialTracking, true);
+        // Ocultar un modelo no debe impedir identificar las motos que ya existen.
+        assert.equal((await call('product-status', { code: 'MOT001', active: false }, admin)).status, 200);
+        const identifiedHidden = await call('serials', { code: 'MOT001', location: 'Sucursal 2', serials: ['X9K2'] }, admin);
+        assert.equal(identifiedHidden.status, 200, JSON.stringify(identifiedHidden.data));
+        assert.deepEqual((await pg.query('SELECT * FROM stock ORDER BY code,location')).rows, originalStock);
+        assert.equal((await pg.query("SELECT location FROM motorcycle_units WHERE serial='X9K2'")).rows[0].location, 'Sucursal 2');
+        assert.equal((await call('event', { id: crypto.randomUUID(), kind: 'venta', code: 'MOT001', quantity: 1, origin: 'Sucursal 2', serials: ['X9K2'] }, admin)).status, 400);
+        assert.equal((await call('serials', { code: 'NO-EXISTE', location: 'Sucursal 2', serials: ['INEXISTENTE'] }, admin)).status, 400);
+        assert.equal((await call('product-status', { code: 'MOT001', active: true }, admin)).status, 200);
         assert.equal((await call('user', { email: 's1@example.com', name: 'S1', role: 'operador', location: 'Sucursal 1', permissions: ['venta', 'compra', 'traslado'], password }, admin)).status, 200);
         const branch = (await call('login', { email: 's1@example.com', password })).cookie;
         const state = (await call('state', null, branch)).data;
