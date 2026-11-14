@@ -1,6 +1,4 @@
--- Nexo: instala una base PostgreSQL nueva con el inventario del Excel.
--- Asigna el administrador después con 04-administrador-inicial.sql.
-
+-- Nexo: base nueva. Administrador en 04-administrador-inicial.sql.
 BEGIN;
 CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now());
 CREATE TABLE locations (id TEXT PRIMARY KEY, name TEXT NOT NULL);
@@ -10,8 +8,8 @@ CREATE TABLE users (
  role TEXT NOT NULL CHECK(role IN ('admin','operador')),
  location TEXT REFERENCES locations(id), active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
  password_hash TEXT NOT NULL,
- permissions TEXT[] NOT NULL DEFAULT ARRAY['venta','compra','traslado']::TEXT[]
-    CHECK (permissions <@ ARRAY['venta','compra','traslado']::TEXT[]),
+ permissions TEXT[] NOT NULL DEFAULT ARRAY['venta']::TEXT[]
+    CHECK (permissions <@ ARRAY['venta','compra','traslado','inventario','historial_ventas','reportes']::TEXT[]),
  CHECK(role='admin' OR location IS NOT NULL)
 );
 CREATE TABLE products (code TEXT PRIMARY KEY, name TEXT NOT NULL, minimum INTEGER NOT NULL DEFAULT 2 CHECK(minimum>=0),
@@ -49,7 +47,7 @@ CREATE TABLE login_attempts (key TEXT PRIMARY KEY, attempts INTEGER NOT NULL, re
 CREATE INDEX events_date_idx ON events(date DESC);
 CREATE INDEX events_origin_idx ON events(origin);
 CREATE INDEX events_destination_idx ON events(destination);
-INSERT INTO schema_migrations(version) VALUES ('001'), ('002');
+INSERT INTO schema_migrations(version) VALUES ('001'), ('002'), ('004');
 COMMIT;
 
 -- Datos originales del Excel: 11 productos y 17 movimientos. Ejecutar una sola vez.
@@ -85,7 +83,6 @@ INSERT INTO events(id,date,kind,code,quantity,origin,destination,supplier,actor)
 INSERT INTO imports VALUES('excel-v1',to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'));
 COMMIT;
 
--- Control de seriales por unidad
 -- Ejecutar una vez en bases existentes. Conserva los movimientos anteriores.
 BEGIN;
 CREATE TABLE motorcycle_units (
@@ -182,4 +179,63 @@ BEGIN
 END;
 $$;
 INSERT INTO schema_migrations(version) VALUES('003');
+COMMIT;
+
+-- Ejecutar después de 05-seriales-y-sucursales.sql. Se puede repetir.
+BEGIN;
+LOCK TABLE schema_migrations IN SHARE ROW EXCLUSIVE MODE;
+CREATE TABLE IF NOT EXISTS serial_corrections (
+    id TEXT PRIMARY KEY,
+    unit_id BIGINT NOT NULL REFERENCES motorcycle_units(id),
+    previous_serial TEXT NOT NULL,
+    new_serial TEXT NOT NULL,
+    reason TEXT NOT NULL CHECK(length(trim(reason)) BETWEEN 3 AND 400),
+    actor TEXT NOT NULL,
+    corrected_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS serial_corrections_unit_idx ON serial_corrections(unit_id,corrected_at DESC);
+
+DROP TRIGGER IF EXISTS protect_serial_corrections ON serial_corrections;
+CREATE TRIGGER protect_serial_corrections BEFORE UPDATE OR DELETE ON serial_corrections
+    FOR EACH ROW EXECUTE FUNCTION immutable_events();
+
+CREATE OR REPLACE FUNCTION correct_motorcycle_serial(
+    request_id TEXT, motorcycle_id BIGINT, expected_serial TEXT,
+    replacement_serial TEXT, correction_reason TEXT, acting_email TEXT
+) RETURNS BOOLEAN LANGUAGE plpgsql AS $$
+DECLARE
+    current_unit motorcycle_units%ROWTYPE;
+    existing_correction serial_corrections%ROWTYPE;
+BEGIN
+    PERFORM 1 FROM users WHERE email=acting_email AND role='admin' AND active=1 FOR SHARE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Solo el administrador puede corregir seriales.' USING ERRCODE='42501';
+    END IF;
+    SELECT * INTO current_unit FROM motorcycle_units WHERE id=motorcycle_id FOR UPDATE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Moto no encontrada.' USING ERRCODE='P0001'; END IF;
+    SELECT * INTO existing_correction FROM serial_corrections WHERE id=request_id;
+    IF FOUND THEN
+        IF existing_correction.unit_id=motorcycle_id AND existing_correction.actor=acting_email
+            AND existing_correction.previous_serial=expected_serial AND existing_correction.new_serial=replacement_serial
+            AND existing_correction.reason=trim(correction_reason) THEN RETURN false; END IF;
+        RAISE EXCEPTION 'El identificador de esta corrección ya está en uso.' USING ERRCODE='P0001';
+    END IF;
+    IF current_unit.serial IS NULL THEN
+        RAISE EXCEPTION 'Identifica primero esta moto con Completar seriales.' USING ERRCODE='P0001';
+    END IF;
+    IF current_unit.serial IS DISTINCT FROM expected_serial THEN
+        RAISE EXCEPTION 'El serial cambió desde que abriste el formulario. Actualiza la página.' USING ERRCODE='P0001';
+    END IF;
+    IF replacement_serial IS NULL OR replacement_serial<>upper(trim(replacement_serial))
+        OR length(replacement_serial) NOT BETWEEN 1 AND 80 OR replacement_serial=current_unit.serial
+        OR correction_reason IS NULL OR length(trim(correction_reason)) NOT BETWEEN 3 AND 400 THEN
+        RAISE EXCEPTION 'Indica un serial diferente y el motivo de la corrección.' USING ERRCODE='P0001';
+    END IF;
+    UPDATE motorcycle_units SET serial=replacement_serial WHERE id=motorcycle_id;
+    INSERT INTO serial_corrections(id,unit_id,previous_serial,new_serial,reason,actor)
+        VALUES(request_id,motorcycle_id,current_unit.serial,replacement_serial,trim(correction_reason),acting_email);
+    RETURN true;
+END;
+$$;
+INSERT INTO schema_migrations(version) VALUES('005') ON CONFLICT DO NOTHING;
 COMMIT;

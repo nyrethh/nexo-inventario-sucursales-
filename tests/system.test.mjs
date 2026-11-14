@@ -43,6 +43,10 @@ test('PostgreSQL: autenticación, roles, datos Excel y operaciones de inventario
   assert.equal((await call('user',{email:'s1@example.com',name:'Operador 1',location:'Sucursal 1'})).status,200);
   const operator=await call('login',{email:'s1@example.com',password});assert.equal(operator.status,200);const opCookie=operator.cookie.split(';')[0];
   const op=await call('state',null,{cookie:opCookie});assert.ok(op.data.stock.every(s=>s.location==='Sucursal 1'));assert.equal(op.data.users.length,0);
+  assert.deepEqual(op.data.user.permissions,['venta']);
+  assert.ok(op.data.events.every(event=>event.kind==='venta'));
+  assert.equal((await call('event',{id:crypto.randomUUID(),kind:'compra',code:'MOT001',quantity:1,destination:'Sucursal 1',supplier:'Proveedor'},{cookie:opCookie})).status,403);
+  assert.equal((await call('serials',{code:'MOT001',location:'Sucursal 1',serials:['NO-PERMITIDO']},{cookie:opCookie})).status,403);
   assert.equal((await call('product',{code:'NEW',name:'Nuevo',minimum:2},{cookie:opCookie})).status,403);
   assert.equal((await call('state',null,{cookie:'',headers:{'oai-authenticated-user-id':'fake','oai-authenticated-user-email':'admin@example.com'}})).status,401);
   let e={id:crypto.randomUUID(),kind:'venta',code:'MOT001',quantity:1,origin:'Sucursal 2'};
@@ -63,6 +67,8 @@ test('PostgreSQL: autenticación, roles, datos Excel y operaciones de inventario
   const buyer=await call('login',{email:'entradas@example.com',password});
   const buyerCookie=buyer.cookie.split(';')[0];
   assert.equal((await call('event',entry,{cookie:buyerCookie})).status,200);
+  assert.ok((await call('state',null,{cookie:buyerCookie})).data.events.some(event=>event.kind==='compra'));
+  assert.ok((await call('state',null,{cookie:opCookie})).data.events.every(event=>event.kind==='venta'));
   assert.equal((await call('event',{...e,id:crypto.randomUUID()},{cookie:buyerCookie})).status,403);
   assert.equal((await call('user',{mode:'create',email:'otro-admin@example.com',name:'Otro administrador',role:'admin',password})).status,200);
   const otherAdmin=await call('login',{email:'otro-admin@example.com',password});

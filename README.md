@@ -80,6 +80,18 @@ Para iniciar el sitio en tu computadora puedes usar `Iniciar-Nexo.cmd` y abrir `
 
 ## 4. Gestionar usuarios y productos
 
+### Corrección de seriales
+
+El administrador dispone de la pantalla **Seriales**, donde puede buscar motos disponibles o vendidas y pulsar **Corregir serial**. El formulario pide el serial correcto y un motivo. Cada cambio conserva la identidad de la moto y registra el valor anterior, el nuevo, el administrador y la fecha. Los movimientos conservan su registro original y muestran también el serial vigente a través de la identidad de la unidad. El serial vigente debe ser único, incluidas las motos vendidas.
+
+Para activar esta función en una base existente con el control por serial instalado, ejecuta `sql/07-correccion-seriales.sql` antes de desplegar. Este archivo se puede repetir. El SQL completo para una base nueva ya lo incluye.
+
+### Código de la interfaz
+
+Los archivos dentro de `public/` se descargan al navegador y se pueden inspeccionar. Las credenciales de PostgreSQL, las contraseñas almacenadas y la autorización se procesan en el servidor. El navegador envía la petición de corrección, y el servidor consulta la sesión y el rol real antes de ejecutarla. La compilación revisa que los archivos públicos no incluyan variables privadas ni conexiones PostgreSQL. Ocultar botones no sustituye estas comprobaciones.
+
+El perfil predeterminado de sucursal muestra Vista general y Productos de su ubicación, con el botón para registrar ventas en Vista general. Entradas/compras, inventario detallado, historial de ventas y reportes requieren una asignación explícita del administrador. Para aplicar este perfil a sucursales existentes, ejecuta una sola vez `sql/06-acceso-predeterminado-sucursales.sql`. Esa actualización restablece sus permisos a ventas, y el administrador puede ampliarlos después.
+
 En **Usuarios → Crear usuario**, el administrador selecciona el rol. Los administradores tienen acceso completo. Para un operador, elige su ubicación y las acciones permitidas: registrar ventas, entradas o traslados. Si dejas todas las acciones sin marcar, la cuenta puede consultar su ubicación.
 
 Desde cada fila, **Editar** permite cambiar los datos y **Desactivar** revoca el acceso. **Reactivar** habilita nuevamente la cuenta. Cada administrador conserva su propio rol y acceso mientras gestiona otros usuarios.

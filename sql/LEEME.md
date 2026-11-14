@@ -11,3 +11,5 @@ Relaciones: cada producto tiene una fila de stock por ubicación. Cada movimient
 Los disparadores crean las filas de stock y actualizan sus cantidades al insertar movimientos. No edites stock directamente ni cargues los saldos por separado: duplicarías las existencias. Los registros del historial no se pueden editar ni eliminar.
 
 Este paquete proporciona la definición y los datos para reconstruir la base; debes crear el servicio PostgreSQL y configurar su conexión al desplegar.
+
+Para bases existentes con seriales, `07-correccion-seriales.sql` añade el registro de correcciones de cada moto. Ejecútalo después del archivo 05. Puede repetirse. La tabla nueva es `serial_corrections`.

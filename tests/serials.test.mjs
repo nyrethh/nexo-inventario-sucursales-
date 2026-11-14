@@ -66,6 +66,21 @@ test('Seriales, aislamiento de sucursal y conservación del inventario anterior'
         const finalState = (await call('state', null, branch)).data;
         assert.ok(!JSON.stringify(finalState).includes('Sucursal 2'));
         assert.ok(finalState.events.filter(item => item.kind === 'traslado').every(item => item.note === '' && item.actor === ''));
+        await pg.query("DELETE FROM schema_migrations WHERE version='004'");
+        assert.deepEqual((await call('state', null, branch)).data.user.permissions,['venta']);
+        assert.equal((await call('event', {...entry,id:crypto.randomUUID()}, branch)).status,403);
+        await pg.exec(sql('06-acceso-predeterminado-sucursales.sql'));
+        assert.deepEqual((await pg.query("SELECT permissions FROM users WHERE email='s1@example.com'")).rows[0].permissions,['venta']);
+        assert.equal((await call('user', {mode:'edit',originalEmail:'s1@example.com',email:'s1@example.com',name:'S1',role:'operador',location:'Sucursal 1',permissions:['venta','compra','reportes']},admin)).status,200);
+        assert.ok((await call('state',null,branch)).data.events.some(item=>item.kind==='compra'));
+        await pg.exec(sql('06-acceso-predeterminado-sucursales.sql'));
+        assert.deepEqual((await pg.query("SELECT permissions FROM users WHERE email='s1@example.com'")).rows[0].permissions,['venta','compra','reportes']);
+        await pg.query('BEGIN');
+        await assert.rejects(()=>pg.query('SELECT 1/0'),error=>error.code==='22012');
+        await assert.rejects(()=>pg.query('SELECT 1'),error=>error.code==='25P02');
+        await pg.query('ROLLBACK');
+        await pg.exec(sql('06-acceso-predeterminado-sucursales.sql'));
+        assert.equal((await call('state',null,admin)).data.user.role,'admin');
     } finally {
         await pg.close();
     }

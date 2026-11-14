@@ -7,8 +7,8 @@ CREATE TABLE users (
  role TEXT NOT NULL CHECK(role IN ('admin','operador')),
  location TEXT REFERENCES locations(id), active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
  password_hash TEXT NOT NULL,
- permissions TEXT[] NOT NULL DEFAULT ARRAY['venta','compra','traslado']::TEXT[]
-    CHECK (permissions <@ ARRAY['venta','compra','traslado']::TEXT[]),
+ permissions TEXT[] NOT NULL DEFAULT ARRAY['venta']::TEXT[]
+    CHECK (permissions <@ ARRAY['venta','compra','traslado','inventario','historial_ventas','reportes']::TEXT[]),
  CHECK(role='admin' OR location IS NOT NULL)
 );
 CREATE TABLE products (code TEXT PRIMARY KEY, name TEXT NOT NULL, minimum INTEGER NOT NULL DEFAULT 2 CHECK(minimum>=0),
@@ -46,5 +46,5 @@ CREATE TABLE login_attempts (key TEXT PRIMARY KEY, attempts INTEGER NOT NULL, re
 CREATE INDEX events_date_idx ON events(date DESC);
 CREATE INDEX events_origin_idx ON events(origin);
 CREATE INDEX events_destination_idx ON events(destination);
-INSERT INTO schema_migrations(version) VALUES ('001'), ('002');
+INSERT INTO schema_migrations(version) VALUES ('001'), ('002'), ('004');
 COMMIT;

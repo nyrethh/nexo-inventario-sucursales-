@@ -21,5 +21,13 @@ try {
         await client.query(readFileSync(new URL('../sql/05-seriales-y-sucursales.sql', import.meta.url),'utf8'));
         console.log('Control individual por serial activado.');
     }
+    if (!(await client.query("SELECT 1 FROM schema_migrations WHERE version='004'")).rowCount) {
+        await client.query(readFileSync(new URL('../sql/06-acceso-predeterminado-sucursales.sql', import.meta.url),'utf8'));
+        console.log('Perfil de sucursal actualizado.');
+    }
+    if (!(await client.query("SELECT 1 FROM schema_migrations WHERE version='005'")).rowCount) {
+        await client.query(readFileSync(new URL('../sql/07-correccion-seriales.sql', import.meta.url),'utf8'));
+        console.log('Corrección de seriales activada.');
+    }
     console.log('Base de datos preparada.');
 } catch (e) { console.error('No se pudo preparar la base:', e.code || e.message); process.exitCode = 1 } finally { await client.end() }

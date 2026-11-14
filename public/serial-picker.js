@@ -1,6 +1,16 @@
 /* Selects existing motorcycles. Values submitted to the API come from the selected results. */
 globalThis.NexoSerialPicker = {
-    mount(container, { units, productName, onChange, limit = 100 }) {
+    mountProduct(container, { products, onChange }) {
+        const names = new Map(products.map(product => [product.code, product.name]));
+        return this.mount(container, {
+            units: products.map(product => ({serial:product.code, code:product.code})),
+            productName: code => names.get(code) || code,
+            onChange: codes => onChange(codes[0] || ''),
+            limit: 1,
+            productMode: true
+        });
+    },
+    mount(container, { units, productName, onChange, limit = 100, productMode = false }) {
         const controller = new AbortController();
         const listen = (element, event, listener) => element.addEventListener(event, listener, { signal: controller.signal });
         const selected = new Map();
@@ -10,13 +20,13 @@ globalThis.NexoSerialPicker = {
 
         container.innerHTML = `
             <div class="serial-picker">
-                <label for="${id}-search">Buscar moto por serial, modelo o código</label>
+                <label for="${id}-search">${productMode ? 'Buscar producto por nombre, modelo o código' : 'Buscar moto por serial, modelo o código'}</label>
                 <input id="${id}-search" type="search" role="combobox" aria-autocomplete="list"
                     aria-expanded="false" aria-controls="${id}" autocomplete="off" maxlength="160"
-                    placeholder="Escribe parte del serial…">
-                <div id="${id}" class="serial-results" role="listbox" aria-label="Motos disponibles" hidden></div>
+                    placeholder="${productMode ? 'Escribe el nombre, modelo o código…' : 'Escribe parte del serial…'}">
+                <div id="${id}" class="serial-results" role="listbox" aria-label="${productMode ? 'Productos disponibles' : 'Motos disponibles'}" hidden></div>
                 <p class="caption serial-feedback" role="status" aria-live="polite"></p>
-                <ul class="serial-selected" aria-label="Motos seleccionadas"></ul>
+                <ul class="serial-selected" aria-label="${productMode ? 'Producto seleccionado' : 'Motos seleccionadas'}"></ul>
             </div>`;
         const input = container.querySelector('input');
         const results = container.querySelector('[role=listbox]');
@@ -45,14 +55,18 @@ globalThis.NexoSerialPicker = {
 
         function renderResults() {
             const query = normalize(input.value);
+            if (productMode && query && selected.size) {
+                selected.clear();
+                renderSelected();
+            }
             focused = -1;
             input.removeAttribute('aria-activedescendant');
             results.replaceChildren();
             if (!query) {
                 closeResults();
-                feedback.textContent = selected.size
-                    ? selected.size + ' moto(s) seleccionada(s).'
-                    : 'Escribe para buscar motos disponibles en el origen seleccionado.';
+                feedback.textContent = productMode
+                    ? (selected.size ? 'Producto seleccionado.' : 'Escribe y elige un producto de las sugerencias.')
+                    : (selected.size ? selected.size + ' moto(s) seleccionada(s).' : 'Escribe para buscar motos disponibles en el origen seleccionado.');
                 return;
             }
             if (selected.size >= limit) {
@@ -84,7 +98,7 @@ globalThis.NexoSerialPicker = {
             input.setAttribute('aria-expanded', String(matches.length > 0));
             feedback.textContent = matches.length
                 ? matches.length + ' coincidencia(s).' + (matches.length > 30 ? ' Se muestran 30; escribe más para filtrar.' : '')
-                : 'No hay motos disponibles con esa búsqueda en este origen.';
+                : productMode ? 'No hay productos disponibles con esa búsqueda.' : 'No hay motos disponibles con esa búsqueda en este origen.';
         }
 
         function renderSelected() {
@@ -92,7 +106,7 @@ globalThis.NexoSerialPicker = {
             for (const unit of selected.values()) {
                 const item = document.createElement('li');
                 const label = document.createElement('span');
-                label.textContent = unit.serial;
+                label.textContent = productMode ? productName(unit.code) + ' · ' + unit.code : unit.serial;
                 const value = document.createElement('input');
                 value.type = 'hidden';
                 value.name = 'serials';
@@ -101,16 +115,19 @@ globalThis.NexoSerialPicker = {
                 remove.type = 'button';
                 remove.className = 'serial-remove';
                 remove.textContent = 'Quitar';
-                remove.setAttribute('aria-label', 'Quitar moto ' + unit.serial);
+                remove.setAttribute('aria-label', (productMode ? 'Quitar producto ' : 'Quitar moto ') + unit.serial);
                 remove.addEventListener('click', () => {
                     selected.delete(unit.serial);
                     renderSelected();
                     renderResults();
                     input.focus();
                 });
-                item.append(label, value, remove);
+                item.append(label);
+                if (!productMode) item.append(value);
+                item.append(remove);
                 list.append(item);
             }
+            if (productMode) input.setCustomValidity(selected.size ? '' : 'Selecciona un producto de las sugerencias.');
             onChange(Array.from(selected.keys()));
         }
 
@@ -143,7 +160,7 @@ globalThis.NexoSerialPicker = {
                 selectUnit(matches[focused]);
             } else if (event.key === 'Enter' && input.value.trim()) {
                 event.preventDefault();
-                feedback.textContent = 'Selecciona una moto de los resultados para añadirla.';
+                feedback.textContent = productMode ? 'Selecciona un producto de las sugerencias.' : 'Selecciona una moto de los resultados para añadirla.';
             } else if (event.key === 'Tab') {
                 closeResults();
             }

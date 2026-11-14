@@ -1,17 +1,52 @@
-let S = null, page = 'dashboard', query = '', filter = '', from = '', to = '', formId = null; const $ = s => document.querySelector(s), L = id => S.locations.find(l => l.id === id)?.name || id || '—', P = code => S.products.find(p => p.code === code)?.name || code; const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); const admin = () => S?.user.role === 'admin'; const num = n => Number(n).toLocaleString('es-VE'); const date = d => new Date(d).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Caracas' }); const typeNames = { compra: 'Entrada', venta: 'Venta', traslado: 'Traslado' }; const navs = [['dashboard', '◫', 'Vista general'], ['inventory', '▦', 'Inventario'], ['sales', '↗', 'Ventas'], ['purchases', '↓', 'Entradas / compras'], ['transfers', '⇄', 'Traslados'], ['reports', '▤', 'Reportes'], ['products', '◇', 'Productos'], ['users', '♙', 'Usuarios']];
+let S = null, page = 'dashboard', query = '', filter = '', from = '', to = '', formId = null; const $ = s => document.querySelector(s), L = id => S.locations.find(l => l.id === id)?.name || id || '—', P = code => S.products.find(p => p.code === code)?.name || code; const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); const admin = () => S?.user.role === 'admin'; const num = n => Number(n).toLocaleString('es-VE'); const date = d => new Date(d).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Caracas' }); const typeNames = { compra: 'Entrada', venta: 'Venta', traslado: 'Traslado' }; const navs = [['dashboard', '◫', 'Vista general'], ['inventory', '▦', 'Inventario'], ['sales', '↗', 'Ventas'], ['purchases', '↓', 'Entradas / compras'], ['transfers', '⇄', 'Traslados'], ['reports', '▤', 'Reportes'], ['products', '◇', 'Productos'], ['users', '♙', 'Usuarios'], ['serials', '◇', 'Seriales']];
 const movementActions = [
     ['venta', 'Registrar ventas'],
     ['compra', 'Registrar entradas'],
     ['traslado', 'Registrar traslados']
 ];
 const mayRegister = kind => S?.serialTracking && (admin() || (kind !== 'traslado' && S.user.permissions?.includes(kind)));
+const accountPermissions = [
+    ['venta', 'Registrar ventas'],
+    ['compra', 'Ver y registrar entradas/compras'],
+    ['inventario', 'Ver inventario detallado'],
+    ['historial_ventas', 'Ver historial de ventas'],
+    ['reportes', 'Ver reportes de su ubicación']
+];
+function canView(destination) {
+    if (!S) return false;
+    if (admin() || ['dashboard', 'products'].includes(destination)) return true;
+    const permission = {purchases:'compra', inventory:'inventario', sales:'historial_ventas', reports:'reportes'}[destination];
+    return !!permission && S.user.permissions.includes(permission);
+}
 let catalogStatus = 'active';
 let serialPicker = null;
 let serialPickerContext = '';
+let productPicker = null;
 function clearSerialPicker() {
     serialPicker?.destroy();
     serialPicker = null;
     serialPickerContext = '';
+}
+
+function clearMovementPickers() {
+    productPicker?.destroy();
+    productPicker = null;
+    clearSerialPicker();
+}
+function initializeMovementProductSearch() {
+    const container = $('#product-search');
+    if (!container) return;
+    const form = $('#entryform');
+    productPicker = NexoSerialPicker.mountProduct(container, {
+        products: S.products.filter(product => product.active),
+        onChange(code) {
+            if (form.elements.code.value !== code) {
+                form.elements.code.value = code;
+                $('#serial-editor').replaceChildren();
+            }
+            showAvailable();
+        }
+    });
 }
 
 async function api(path, data) { const r = await fetch('/api/' + path, { method: data ? 'POST' : 'GET', headers: data ? { 'Content-Type': 'application/json' } : {}, body: data ? JSON.stringify(data) : undefined }); const j = await r.json(); if (!r.ok) throw Object.assign(new Error(j.error || 'No se pudo conectar.'), { status: r.status }); return j }
@@ -51,6 +86,7 @@ document.addEventListener('keydown', event => {
     }
 });
 function go(destination) {
+    if (!canView(destination)) return;
     const mobile = mobileLayout.matches;
     page = destination;
     query = filter = from = to = '';
@@ -76,9 +112,10 @@ function dashboardMovementAction() {
 }
 function render() {
     if (!S) return;
+    if (!canView(page)) page = 'dashboard';
     const title = navs.find(item => item[0] === page)?.[2] || '';
     const initial = esc(S.user.name.slice(0, 1).toUpperCase());
-    const sections = navs.filter(item => admin() || !['users','transfers'].includes(item[0]));
+    const sections = navs.filter(item => canView(item[0]));
     $('#app').innerHTML = `
         <div class="mobile-shade" aria-hidden="true" onclick="setMenu(false, true)"></div>
         <aside id="app-sidebar" aria-label="Navegación de Nexo">
@@ -113,7 +150,7 @@ function heading(title, subtitle, action = '') { return `<div class="heading"><d
 function btn(label, action, secondary = false) { return `<button class="button ${secondary ? 'secondary' : ''}" onclick="${action}">${label}</button>` }
 function locationSelect(id = 'filter', all = true) { return `<select aria-label="Ubicación" id="${id}" onchange="filter=this.value;content()">${all ? '<option value="">Todas las ubicaciones</option>' : ''}${S.locations.filter(l => admin() || l.id === S.user.location).map(l => `<option value="${esc(l.id)}" ${filter === l.id ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select>` }
 function toolbar(dates = false) { return `<div class="toolbar"><input class="search" aria-label="Buscar producto" placeholder="⌕  Buscar por nombre o código…" value="${esc(query)}" oninput="query=this.value;updateRows()">${locationSelect()}${dates ? `<label>Desde<input type="date" value="${from}" onchange="from=this.value;content()"></label><label>Hasta<input type="date" value="${to}" onchange="to=this.value;content()"></label>` : ''}<button class="button secondary" onclick="exportCSV()">↓ Exportar CSV</button></div>` }
-function eventTable(events, compact = false) { return `<div class="table-wrap"><table><thead><tr><th>Producto</th><th>Movimiento</th>${compact ? '' : '<th>Origen → destino</th><th>Proveedor</th>'}<th>Cantidad</th><th>Seriales</th><th>Fecha</th></tr></thead><tbody>${events.map(e => `<tr><td><strong>${esc((e.product_name || P(e.code)))}</strong><small>${esc(e.code)}</small></td><td><span class="badge ${e.kind === 'venta' ? 'warn' : ''}">${typeNames[e.kind]}</span></td>${compact ? '' : `<td>${esc(L(e.origin))} → ${esc(L(e.destination))}</td><td>${esc(e.supplier || '—')}</td>`}<td><strong>${num(e.quantity)}</strong> <small>unidades</small></td><td class="serial-cell">${esc(e.serials?.join(", ") || "Histórico sin serial")}</td><td>${date(e.date)}</td></tr>`).join('') || `<tr><td colspan="7" class="empty">No hay movimientos para este filtro.</td></tr>`}</tbody></table></div>` }
+function eventTable(events, compact = false) { return `<div class="table-wrap"><table><thead><tr><th>Producto</th><th>Movimiento</th>${compact ? '' : '<th>Origen → destino</th><th>Proveedor</th>'}<th>Cantidad</th><th>Seriales</th><th>Fecha</th></tr></thead><tbody>${events.map(e => `<tr><td><strong>${esc((e.product_name || P(e.code)))}</strong><small>${esc(e.code)}</small></td><td><span class="badge ${e.kind === 'venta' ? 'warn' : ''}">${typeNames[e.kind]}</span></td>${compact ? '' : `<td>${esc(L(e.origin))} → ${esc(L(e.destination))}</td><td>${esc(e.supplier || '—')}</td>`}<td><strong>${num(e.quantity)}</strong> <small>unidades</small></td><td class="serial-cell">${esc((e.current_serials || e.serials)?.join(", ") || "Histórico sin serial")}</td><td>${date(e.date)}</td></tr>`).join('') || `<tr><td colspan="7" class="empty">No hay movimientos para este filtro.</td></tr>`}</tbody></table></div>` }
 function labelTableCells(scope) {
     for (const table of scope.querySelectorAll('table:not([data-mobile-ready])')) {
         const headings = Array.from(table.tHead?.rows[0]?.cells || [], cell => cell.textContent.trim());
@@ -127,6 +164,7 @@ function labelTableCells(scope) {
     }
 }
 function content() {
+    if (!canView(page)) { page = 'dashboard'; render(); return; }
     renderContent();
     if (!S.serialTracking) {
         $('#content').insertAdjacentHTML('afterbegin', '<div class="notice"><p>' +
@@ -136,8 +174,13 @@ function content() {
     labelTableCells($('#content'));
 }
 function renderContent() {
+    if (page === 'serials') {
+        $('#content').innerHTML = serialsPage();
+        updateRows();
+        return;
+    }
 
-    const c = $('#content'); if (page === 'dashboard') { const total = stock(), sales = S.events.filter(e => e.kind === 'venta').reduce((a, e) => a + e.quantity, 0), low = S.products.filter(p => p.active && stock(p.code) <= p.minimum).length, locs = S.locations.filter(l => admin() || l.id === S.user.location), max = Math.max(1, ...locs.map(l => stock(null, l.id))), sold = locs.map(l => S.events.filter(e => e.kind === 'venta' && e.origin === l.id).reduce((a, e) => a + e.quantity, 0)), sum = sold.reduce((a, b) => a + b, 0); let start = 0; const colors = ['#205c46', '#86a987', '#c4d9a5']; const gradient = sold.map((v, i) => { let s = start; start += sum ? v / sum * 100 : 0; return colors[i] + ' ' + s + '% ' + start + '%' }).join(','); c.innerHTML = heading('Vista general', 'Todo tu inventario. Una sola mirada.', dashboardMovementAction()) + (!S.imported && admin() ? `<div class="notice"><div><strong>Tu Excel está listo para importar</strong><p>11 productos · 3 compras · 5 traslados · 9 ventas. Se importará una sola vez.</p></div>${btn('Importar datos del Excel', "importData(this)")}</div>` : '') + `<div class="stats">${[['Existencias totales', total, 'Unidades disponibles', '▦'], ['Unidades vendidas', sales, 'Acumulado de movimientos', '↗'], ['Productos registrados', S.products.filter(p => p.active).length, 'Catálogo de productos', '◇'], ['Stock bajo o agotado', low, 'Productos bajo el mínimo global', '!']].map((x, i) => `<div class="stat ${i === 0 ? 'featured' : ''}"><div class="stat-top">${x[0]}<span class="stat-icon">${x[3]}</span></div><div class="stat-number">${num(x[1])}</div><div class="stat-note">${x[2]}</div></div>`).join('')}</div><div class="grid"><section class="panel"><div class="panel-head"><div><h2>Existencias por ubicación</h2><div class="caption">Distribución actual del inventario</div></div><span class="badge">Unidades</span></div><div class="bars">${locs.map(l => `<div class="bar-group"><strong>${stock(null, l.id)}</strong><div class="bar" style="height:${stock(null, l.id) / max * 145}px"></div></div>`).join('')}</div><div class="bar-labels">${locs.map(l => `<span>${esc(l.name)}</span>`).join('')}</div></section><section class="panel"><div class="panel-head"><div><h2>Ventas por ubicación</h2><div class="caption">Unidades vendidas · acumulado</div></div></div><div class="donut-wrap"><div class="donut" role="img" aria-label="${locs.map((l, i) => l.name + ': ' + sold[i]).join(', ')}" style="background:${sum ? 'conic-gradient(' + gradient + ')' : '#edf1e7'}"><div class="donut-hole"><strong>${num(sum)}</strong><span>unidades vendidas</span></div></div><div class="legend">${locs.map((l, i) => `<div class="legend-row"><i class="dot" style="background:${colors[i]}"></i>${esc(l.name)}<strong>${sold[i]}</strong></div>`).join('')}</div></div></section></div><section class="panel" style="margin-top:24px"><div class="panel-head"><div><h2>Últimos movimientos</h2><div class="caption">El pulso de tu negocio</div></div><button class="inline-link" onclick="go('reports')">Ver historial →</button></div>${eventTable(S.events.slice(0, 5), true)}</section>`; return }
+    const c = $('#content'); if (page === 'dashboard') { const total = stock(), sales = S.events.filter(e => e.kind === 'venta').reduce((a, e) => a + e.quantity, 0), low = S.products.filter(p => p.active && stock(p.code) <= p.minimum).length, locs = S.locations.filter(l => admin() || l.id === S.user.location), max = Math.max(1, ...locs.map(l => stock(null, l.id))), sold = locs.map(l => S.events.filter(e => e.kind === 'venta' && e.origin === l.id).reduce((a, e) => a + e.quantity, 0)), sum = sold.reduce((a, b) => a + b, 0); let start = 0; const colors = ['#205c46', '#86a987', '#c4d9a5']; const gradient = sold.map((v, i) => { let s = start; start += sum ? v / sum * 100 : 0; return colors[i] + ' ' + s + '% ' + start + '%' }).join(','); c.innerHTML = heading('Vista general', 'Todo tu inventario. Una sola mirada.', dashboardMovementAction()) + (!S.imported && admin() ? `<div class="notice"><div><strong>Tu Excel está listo para importar</strong><p>11 productos · 3 compras · 5 traslados · 9 ventas. Se importará una sola vez.</p></div>${btn('Importar datos del Excel', "importData(this)")}</div>` : '') + `<div class="stats">${[['Existencias totales', total, 'Unidades disponibles', '▦'], ['Unidades vendidas', sales, 'Acumulado de movimientos', '↗'], ['Productos registrados', S.products.filter(p => p.active).length, 'Catálogo de productos', '◇'], ['Stock bajo o agotado', low, 'Productos bajo el mínimo global', '!']].map((x, i) => `<div class="stat ${i === 0 ? 'featured' : ''}"><div class="stat-top">${x[0]}<span class="stat-icon">${x[3]}</span></div><div class="stat-number">${num(x[1])}</div><div class="stat-note">${x[2]}</div></div>`).join('')}</div><div class="grid"><section class="panel"><div class="panel-head"><div><h2>Existencias por ubicación</h2><div class="caption">Distribución actual del inventario</div></div><span class="badge">Unidades</span></div><div class="bars">${locs.map(l => `<div class="bar-group"><strong>${stock(null, l.id)}</strong><div class="bar" style="height:${stock(null, l.id) / max * 145}px"></div></div>`).join('')}</div><div class="bar-labels">${locs.map(l => `<span>${esc(l.name)}</span>`).join('')}</div></section><section class="panel"><div class="panel-head"><div><h2>Ventas por ubicación</h2><div class="caption">Unidades vendidas · acumulado</div></div></div><div class="donut-wrap"><div class="donut" role="img" aria-label="${locs.map((l, i) => l.name + ': ' + sold[i]).join(', ')}" style="background:${sum ? 'conic-gradient(' + gradient + ')' : '#edf1e7'}"><div class="donut-hole"><strong>${num(sum)}</strong><span>unidades vendidas</span></div></div><div class="legend">${locs.map((l, i) => `<div class="legend-row"><i class="dot" style="background:${colors[i]}"></i>${esc(l.name)}<strong>${sold[i]}</strong></div>`).join('')}</div></div></section></div><section class="panel" style="margin-top:24px"><div class="panel-head"><div><h2>Últimos movimientos</h2><div class="caption">El pulso de tu negocio</div></div>${canView('reports') ? '<button class="inline-link" onclick="go(\'reports\')">Ver historial →</button>' : ''}</div>${eventTable(S.events.slice(0, 5), true)}</section>`; return }
     if (['sales', 'purchases', 'transfers'].includes(page)) { const kind = { sales: 'venta', purchases: 'compra', transfers: 'traslado' }[page]; c.innerHTML = heading({ sales: 'Ventas', purchases: 'Entradas y compras', transfers: 'Traslados entre ubicaciones' }[page], { sales: 'Cada venta actualiza las existencias de su ubicación.', purchases: 'Registra mercancía recibida y su proveedor.', transfers: 'Mueve inventario con origen, destino y cantidad.' }[page], mayRegister(kind) ? btn('+ ' + { sales: 'Registrar venta', purchases: 'Registrar entrada', transfers: 'Nuevo traslado' }[page], `openForm('${kind}')`) : '') + `<section class="panel">${toolbar(true)}<div id="rows"></div></section>`; updateRows(); return }
     if (page === 'inventory') { c.innerHTML = heading('Inventario', 'Existencias disponibles por producto y ubicación.', mayRegister('compra') ? btn('+ Añadir inventario', "openForm('compra')") : '') + `<section class="panel">${toolbar()}<div id="rows"></div></section>`; updateRows(); return }
     if (page === 'products') {
@@ -159,7 +202,7 @@ function renderContent() {
 function usersPage() {
     const rows = S.users.map(user => {
         const isAdmin = user.role === 'admin';
-        const permissions = isAdmin ? 'Acceso completo' : movementActions
+        const permissions = isAdmin ? 'Acceso completo' : accountPermissions
             .filter(([action]) => user.permissions.includes(action)).map(([, label]) => label).join(', ') || 'Solo consulta';
         const status = user.active ? 'Activo' : 'Inactivo';
         return `<tr>
@@ -195,6 +238,55 @@ function productsTable() {
         <thead><tr><th>Producto</th><th>Mínimo de referencia</th><th>Existencias</th>${admin() ? '<th>Estado</th><th>Acciones</th>' : ''}</tr></thead>
         <tbody>${rows || '<tr><td class="empty">No se encontraron productos.</td></tr>'}</tbody></table></div>`;
 }
+function serialsPage() {
+    const intro = heading('Seriales de las motos', 'Consulta unidades disponibles y vendidas y corrige sus seriales.');
+    if (!S.serialCorrectionEnabled) {
+        return intro + '<div class="notice"><p>Activa esta función ejecutando sql/07-correccion-seriales.sql en la base de Nexo.</p></div>';
+    }
+    return intro + `<section class="panel"><div class="toolbar">
+        <input class="search" type="search" aria-label="Buscar moto para corregir serial" placeholder="Buscar serial, modelo o código…"
+            value="${esc(query)}" oninput="query=this.value;updateRows()">
+        </div><div id="rows"></div></section>`;
+}
+function serialManagementRows() {
+    const search = query.toLowerCase().trim();
+    const units = S.serialUnits.filter(unit => (unit.code + ' ' + unit.product_name + ' ' + (unit.serial || '')).toLowerCase().includes(search));
+    const unitRows = units.map(unit => `<tr>
+        <td><strong>${esc(unit.product_name)}</strong><small>${esc(unit.code)}</small></td>
+        <td class="serial-cell">${esc(unit.serial || 'Pendiente de identificar')}</td>
+        <td>${unit.sold ? 'Vendida' : esc(L(unit.location))}</td>
+        <td>${unit.serial ? `<button type="button" class="inline-link" data-id="${esc(unit.id)}" onclick="openSerialCorrection(this.dataset.id)">Corregir serial</button>` : ''}</td>
+    </tr>`).join('');
+    const corrections = S.serialCorrections.filter(item => !search
+        || (item.previous_serial + ' ' + item.new_serial).toLowerCase().includes(search));
+    return `<div class="table-wrap"><table><thead><tr><th>Moto</th><th>Serial actual</th><th>Ubicación / estado</th><th>Acción</th></tr></thead>
+        <tbody>${unitRows || '<tr><td class="empty">No se encontraron motos.</td></tr>'}</tbody></table></div>
+        <h2 style="margin-top:24px">Historial de correcciones</h2><p class="caption">Hasta 200 correcciones recientes.</p>
+        <div class="table-wrap"><table><thead><tr><th>Serial anterior</th><th>Serial nuevo</th><th>Motivo</th><th>Administrador</th><th>Fecha</th></tr></thead>
+        <tbody>${corrections.map(item => `<tr><td>${esc(item.previous_serial)}</td><td>${esc(item.new_serial)}</td>
+            <td class="serial-cell">${esc(item.reason)}</td><td>${esc(item.actor)}</td><td>${date(item.corrected_at)}</td></tr>`).join('')
+            || '<tr><td class="empty">No hay correcciones para esta búsqueda.</td></tr>'}</tbody></table></div>`;
+}
+function openSerialCorrection(unitId) {
+    if (!admin() || !S.serialCorrectionEnabled) return;
+    const unit = S.serialUnits.find(item => String(item.id) === String(unitId));
+    if (!unit?.serial) return;
+    clearMovementPickers();
+    formId = crypto.randomUUID();
+    const modal = $('#modal');
+    modal.innerHTML = `<button class="close" type="button" aria-label="Cerrar" onclick="$('#modal').close()">×</button>
+        <h2>Corregir serial</h2><p>${esc(unit.product_name)} · ${unit.sold ? 'Moto vendida' : esc(L(unit.location))}</p>
+        <form id="entryform"><div class="form-grid">
+            <input type="hidden" name="unitId" value="${esc(unit.id)}">
+            <label class="full">Serial actual<input name="previousSerial" value="${esc(unit.serial)}" readonly></label>
+            <label class="full">Serial correcto<input name="newSerial" required maxlength="80" autocomplete="off"></label>
+            <label class="full">Motivo de la corrección<textarea name="reason" required minlength="3" maxlength="400" rows="3"></textarea></label>
+        </div><div class="error" id="formerror" role="alert"></div>
+        <div class="form-footer"><button class="button secondary" type="button" onclick="$('#modal').close()">Cancelar</button>
+            <button class="button" type="submit">Guardar corrección</button></div></form>`;
+    $('#entryform').onsubmit = event => submit(event,'serial-correction');
+    modal.showModal();
+}
 function statusButton(kind, key, active) {
     const label = kind === 'product' ? (active ? 'Ocultar' : 'Mostrar') : (active ? 'Desactivar' : 'Reactivar');
     return `<button class="inline-link" data-key="${esc(key)}" data-active="${active ? 0 : 1}" onclick="changeStatus('${kind}',this)">${label}</button>`;
@@ -217,7 +309,8 @@ function inventoryTable() {
         <tbody>${rows || '<tr><td class="empty">No hay unidades disponibles.</td></tr>'}</tbody></table></div>`;
 }
 function openIdentify(code, location) {
-    clearSerialPicker();
+    if (!mayRegister('compra')) return;
+    clearMovementPickers();
     const count = S.units.filter(unit => unit.code === code && unit.location === location && !unit.serial).length;
     const modal = $('#modal');
     formId = crypto.randomUUID();
@@ -238,10 +331,12 @@ function updateRows() {
     const rows = $('#rows');
     if (rows) labelTableCells(rows);
 }
-function renderRows() { const r = $('#rows'); if (!r) return; if (page === 'inventory') r.innerHTML = inventoryTable(); else if (page === 'products') r.innerHTML = productsTable(); else if (page === 'reports') { const ev = visibleEvents(), sold = ev.filter(e => e.kind === 'venta').reduce((a, e) => a + e.quantity, 0); r.innerHTML = `<div class="notice"><p><strong>${sold}</strong> unidades vendidas en el período · <strong>${ev.length}</strong> movimientos · <strong>${stock(null, filter)}</strong> unidades disponibles actualmente</p></div><h2 style="margin-bottom:16px">Resumen de ventas por producto</h2><div class="table-wrap"><table><thead><tr><th>Producto</th><th>Unidades vendidas</th></tr></thead><tbody>${relevantProducts().map(p => ({ p, q: ev.filter(e => e.kind === 'venta' && e.code === p.code).reduce((a, e) => a + e.quantity, 0) })).filter(x => x.q).map(x => `<tr><td>${esc(x.p.name)}</td><td>${x.q}</td></tr>`).join('') || '<tr><td class="empty">Sin ventas en el período.</td></tr>'}</tbody></table></div><h2 style="margin:24px 0 16px">Resumen de existencias actuales</h2>${inventoryTable()}<h2 style="margin:24px 0 16px">Historial de movimientos</h2>${eventTable(ev)}`; } else r.innerHTML = eventTable(visibleEvents({ sales: 'venta', purchases: 'compra', transfers: 'traslado' }[page])) }
+function renderRows() { const r = $('#rows'); if (!r) return; if (page === 'serials' && admin()) r.innerHTML = serialManagementRows(); else if (page === 'inventory') r.innerHTML = inventoryTable(); else if (page === 'products') r.innerHTML = productsTable(); else if (page === 'reports') { const ev = visibleEvents(), sold = ev.filter(e => e.kind === 'venta').reduce((a, e) => a + e.quantity, 0); r.innerHTML = `<div class="notice"><p><strong>${sold}</strong> unidades vendidas en el período · <strong>${ev.length}</strong> movimientos · <strong>${stock(null, filter)}</strong> unidades disponibles actualmente</p></div><h2 style="margin-bottom:16px">Resumen de ventas por producto</h2><div class="table-wrap"><table><thead><tr><th>Producto</th><th>Unidades vendidas</th></tr></thead><tbody>${relevantProducts().map(p => ({ p, q: ev.filter(e => e.kind === 'venta' && e.code === p.code).reduce((a, e) => a + e.quantity, 0) })).filter(x => x.q).map(x => `<tr><td>${esc(x.p.name)}</td><td>${x.q}</td></tr>`).join('') || '<tr><td class="empty">Sin ventas en el período.</td></tr>'}</tbody></table></div><h2 style="margin:24px 0 16px">Resumen de existencias actuales</h2>${inventoryTable()}<h2 style="margin:24px 0 16px">Historial de movimientos</h2>${eventTable(ev)}`; } else r.innerHTML = eventTable(visibleEvents({ sales: 'venta', purchases: 'compra', transfers: 'traslado' }[page])) }
 function options(locs, value) { return locs.map(l => `<option value="${esc(l.id)}" ${value === l.id ? 'selected' : ''}>${esc(l.name)}</option>`).join('') }
 function openForm(kind, key) {
-    clearSerialPicker();
+    if (['venta','compra','traslado'].includes(kind) && !mayRegister(kind)) return;
+    if (['user','product'].includes(kind) && !admin()) return;
+    clearMovementPickers();
     formId = crypto.randomUUID();
     const modal = $('#modal');
     let fields = '', title = '', sub = '';
@@ -262,16 +357,17 @@ function openForm(kind, key) {
         sub = kind === 'compra' ? 'Registra el serial individual de cada moto recibida.'
             : 'Busca y añade las motos disponibles. La cantidad se calcula con tu selección.';
         fields = movementFields(kind);
-    } modal.innerHTML = `<button class="close" aria-label="Cerrar" onclick="$('#modal').close()">×</button><h2>${title}</h2><p>${sub}</p><form id="entryform"><div class="form-grid">${fields}</div><div class="error" role="alert" id="formerror"></div><div class="form-footer"><button type="button" class="button secondary" onclick="$('#modal').close()">Cancelar</button><button class="button" type="submit">Guardar ${kind === 'product' ? 'producto' : kind === 'user' ? 'usuario' : 'movimiento'}</button></div></form>`; $('#entryform').onsubmit = e => submit(e, kind); if (kind === 'user') updateRoleFields(); modal.showModal(); showAvailable() }
+    } modal.innerHTML = `<button class="close" aria-label="Cerrar" onclick="$('#modal').close()">×</button><h2>${title}</h2><p>${sub}</p><form id="entryform"><div class="form-grid">${fields}</div><div class="error" role="alert" id="formerror"></div><div class="form-footer"><button type="button" class="button secondary" onclick="$('#modal').close()">Cancelar</button><button class="button" type="submit">Guardar ${kind === 'product' ? 'producto' : kind === 'user' ? 'usuario' : 'movimiento'}</button></div></form>`; $('#entryform').onsubmit = e => submit(e, kind); if (kind === 'user') updateRoleFields(); if (kind === 'compra' || kind === 'venta') initializeMovementProductSearch(); modal.showModal(); showAvailable() }
 function movementFields(kind) {
     const entering = kind === 'compra';
+    const searchableProduct = entering || kind === 'venta';
     const own = S.locations.filter(location => admin() || location.id === S.user.location);
     return `
         <input type="hidden" name="kind" value="${kind}">
-        <label class="full">Producto<select name="code" required onchange="showAvailable()">
+        ${searchableProduct ? '<input name="code" type="hidden" value=""><div id="product-search" class="full"></div>' : `<label class="full">Producto<select name="code" required onchange="showAvailable()">
             <option value="">Selecciona un producto</option>
             ${S.products.filter(product => product.active).map(product => `<option value="${esc(product.code)}">${esc(product.code + ' · ' + product.name)}</option>`).join('')}
-        </select></label>
+        </select></label>`}
         ${entering ? '' : `<label>Origen<select name="origin" onchange="showAvailable()">${options(own)}</select></label>`}
         ${kind === 'venta' ? '' : `<label>Destino<select name="destination">${options(entering ? own : S.locations, kind === 'traslado' ? 'Sucursal 1' : undefined)}</select></label>`}
         <label>${entering ? 'Cantidad' : 'Cantidad seleccionada'}
@@ -298,7 +394,7 @@ function userFields(user) {
         <label id="operator-location" class="full">Ubicación<select name="location">${options(S.locations,user?.location)}</select></label>
         <fieldset id="operator-actions" class="full permission-options">
             <legend>Acciones permitidas</legend>
-            ${movementActions.filter(([value]) => value !== 'traslado').map(([value, label]) => `<label><input type="checkbox" name="permissions" value="${value}" ${user?.permissions.includes(value) ? 'checked' : ''}>${label}</label>`).join('')}
+            ${accountPermissions.map(([value, label]) => `<label><input type="checkbox" name="permissions" value="${value}" ${(user ? user.permissions.includes(value) : value === 'venta') ? 'checked' : ''}>${label}</label>`).join('')}
             <p>Sin acciones seleccionadas, la cuenta puede consultar su ubicación.</p>
         </fieldset>
         <p id="admin-actions" class="full caption">El administrador tiene acceso a todas las ubicaciones y puede gestionar usuarios y productos.</p>`;
@@ -375,7 +471,7 @@ async function submit(event, kind) {
             body.quantity = body.serials.length;
         }
         body.id = formId;
-        await api(['product', 'user', 'serials'].includes(kind) ? kind : 'event', body);
+        await api(['product', 'user', 'serials', 'serial-correction'].includes(kind) ? kind : 'event', body);
         $('#modal').close();
         await load();
         toast('Registro guardado correctamente.');
@@ -400,6 +496,6 @@ async function changeStatus(kind, button) {
         button.disabled = false;
     }
 }
-function exportCSV() { let rows; if (['inventory', 'products'].includes(page)) { const locs = S.locations.filter(l => (admin() || l.id === S.user.location) && (!filter || l.id === filter)); rows = [['Código', 'Producto', ...locs.map(l => l.name), 'Total'], ...relevantProducts().map(p => [p.code, p.name, ...locs.map(l => stock(p.code, l.id)), locs.reduce((a, l) => a + stock(p.code, l.id), 0)])] } else { rows = [['Fecha', 'Tipo', 'Código', 'Producto', 'Cantidad', 'Seriales', 'Origen', 'Destino', 'Proveedor', 'Observaciones', 'Usuario'], ...visibleEvents({ sales: 'venta', purchases: 'compra', transfers: 'traslado' }[page]).map(e => [e.date, typeNames[e.kind], e.code, (e.product_name || P(e.code)), e.quantity, e.serials?.join(', ') || '', L(e.origin), L(e.destination), e.supplier, e.note, e.actor])] } const csv = '\uFEFF' + rows.map(row => row.map(v => '"' + String(v ?? '').replace(/^[=+@-]/, "'$&").replace(/"/g, '""') + '"').join(';')).join('\r\n'); const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); const a = document.createElement('a'); a.href = url; a.download = 'nexo-' + page + '-' + new Date().toISOString().slice(0, 10) + '.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) }
-$('#modal').addEventListener('close', clearSerialPicker);
+function exportCSV() { let rows; if (['inventory', 'products'].includes(page)) { const locs = S.locations.filter(l => (admin() || l.id === S.user.location) && (!filter || l.id === filter)); rows = [['Código', 'Producto', ...locs.map(l => l.name), 'Total'], ...relevantProducts().map(p => [p.code, p.name, ...locs.map(l => stock(p.code, l.id)), locs.reduce((a, l) => a + stock(p.code, l.id), 0)])] } else { rows = [['Fecha', 'Tipo', 'Código', 'Producto', 'Cantidad', 'Seriales', 'Origen', 'Destino', 'Proveedor', 'Observaciones', 'Usuario'], ...visibleEvents({ sales: 'venta', purchases: 'compra', transfers: 'traslado' }[page]).map(e => [e.date, typeNames[e.kind], e.code, (e.product_name || P(e.code)), e.quantity, (e.current_serials || e.serials)?.join(', ') || '', L(e.origin), L(e.destination), e.supplier, e.note, e.actor])] } const csv = '\uFEFF' + rows.map(row => row.map(v => '"' + String(v ?? '').replace(/^[=+@-]/, "'$&").replace(/"/g, '""') + '"').join(';')).join('\r\n'); const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); const a = document.createElement('a'); a.href = url; a.download = 'nexo-' + page + '-' + new Date().toISOString().slice(0, 10) + '.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) }
+$('#modal').addEventListener('close', clearMovementPickers);
 load();
